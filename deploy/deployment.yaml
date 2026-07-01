@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-reaper
+  namespace: kube-reaper
+  labels:
+    app.kubernetes.io/name: kube-reaper
+spec:
+  replicas: 2 # one active leader, one hot standby for HA
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-reaper
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-reaper
+    spec:
+      serviceAccountName: kube-reaper
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kube-reaper
+          image: ghcr.io/inblade/kube-reaper:latest
+          args: [] # add "--dry-run" to observe before enabling deletes
+          env:
+            - name: REAPER_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: REAPER_IDENTITY
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: REAPER_DENY_NAMESPACES
+              value: "kube-system,kube-node-lease"
+          ports:
+            - name: metrics
+              containerPort: 8080
+            - name: health
+              containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

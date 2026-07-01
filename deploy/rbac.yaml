@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-reaper
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-reaper
+  namespace: kube-reaper
+---
+# Cluster-wide: list & delete pods and jobs. Least privilege — no get/watch/create.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-reaper
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-reaper
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-reaper
+subjects:
+  - kind: ServiceAccount
+    name: kube-reaper
+    namespace: kube-reaper
+---
+# Leader-election lease, scoped to the operator's own namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-reaper-leaderelection
+  namespace: kube-reaper
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-reaper-leaderelection
+  namespace: kube-reaper
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-reaper-leaderelection
+subjects:
+  - kind: ServiceAccount
+    name: kube-reaper
+    namespace: kube-reaper
