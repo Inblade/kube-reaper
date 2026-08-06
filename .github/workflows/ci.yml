@@ -29,7 +29,17 @@ jobs:
         run: go vet ./...
 
       - name: Test (race)
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tail -1
+          {
+            echo '### Coverage'
+            echo '```'
+            go tool cover -func=coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build
         run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/kube-reaper .

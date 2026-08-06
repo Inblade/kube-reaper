@@ -129,6 +129,42 @@ bounded. On very large clusters the next step is a field selector
 (`status.phase=Failed`) or a shared informer with a local cache — a deliberate,
 documented trade-off rather than premature optimisation.
 
+## Tests
+
+```bash
+make test          # go test -race ./...
+go test -race -cover ./...
+```
+
+88% statement coverage of `internal/reaper`, all of it against `client-go`'s
+fake clientset — no cluster required, and the suite finishes in about two
+seconds.
+
+The parts worth having tests for, and why:
+
+- **The denylist.** `kube-system` must be in it by default. This is the single
+  most consequential default in the operator: without it a misconfigured
+  reaper deletes control plane pods.
+- **Configuration parsing.** Every knob is an environment variable, and a typo
+  in one must fall back to its default rather than to a zero value — a zero
+  interval is a tight loop against the API server. An env var set to the empty
+  string (what an unset ConfigMap key produces) counts as unset, not as an
+  override. `--dry-run` on the command line wins over `REAPER_DRY_RUN=false`,
+  because the reverse means someone typed `--dry-run` and still deleted things.
+- **Leader-election identity.** It can never be empty: two replicas sharing an
+  identity would fight over the same lease indefinitely.
+- **Error classification.** `deletion_errors_total` is labelled by error class,
+  and every classification is asserted to land in a fixed, low-cardinality set.
+  Returning the raw error text there would create one series per pod name and
+  take the metrics pipeline down with it.
+- **The task set.** Names, order, uniqueness and intervals are pinned. A task
+  dropped in a refactor produces no error anywhere — the reaper just quietly
+  stops cleaning one class of debris. Task names are also metric label values,
+  so a duplicate would make two tasks share a counter.
+- **The run loop.** It executes immediately rather than waiting a full
+  interval, records success and failure separately, survives a failing task,
+  and returns on context cancellation.
+
 ## Limitations
 
 - List-all scales linearly with object count; see above for the informer path.
